@@ -7,9 +7,9 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-    origin: "http://localhost:3000",
-    credentials: true,
-  }));
+  origin: "http://localhost:3000",
+  credentials: true,
+}));
 app.use(express.json());
 
 const startServer = async () => {
@@ -17,10 +17,31 @@ const startServer = async () => {
 
   const parcelCollection = client.db("parcelDb").collection("parcels");
 
-  // GET parcels
+
+  // GET parcels all or by email
   app.get("/parcels", async (req, res) => {
-    const parcels = await parcelCollection.find().toArray();
-    res.send(parcels);
+    try {
+      const email = req.query.email as string | undefined;
+
+      const filter = email ? { create_by: email } : {};
+
+      const parcels = await parcelCollection
+        .find(filter)
+        .sort({ orderDate: -1 }) // latest first
+        .toArray();
+
+      res.status(200).json({
+        success: true,
+        total: parcels.length,
+        data: parcels,
+      });
+    } catch (error) {
+      console.error("Fetch parcels error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch parcels",
+      });
+    }
   });
 
   // POST parcel
