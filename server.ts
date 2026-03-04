@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB, client } from "./src/config/db";
-
+import { ObjectId } from "mongodb";
 dotenv.config();
 const app = express();
 
@@ -31,7 +31,7 @@ const startServer = async () => {
         .toArray();
 
       res.status(200).json({
-        success: true,
+        success: true, 
         total: parcels.length,
         data: parcels,
       });
@@ -51,6 +51,34 @@ const startServer = async () => {
     res.send(result);
   });
 
+  // DELETE parcel (Hard Delete)
+app.delete("/parcels/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const result = await parcelCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Parcel not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Parcel deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete parcel",
+    });
+  }
+});
   app.get("/", (req, res) => {
     res.send("ZipX Backend Running 🚀");
     console.log("this server running");
