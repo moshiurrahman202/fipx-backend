@@ -16,7 +16,8 @@
     "express": "^5.2.1",
     "firebase-admin": "^13.6.1",
     "mongodb": "^7.1.0",
-    "mongoose": "^9.2.0"
+    "mongoose": "^9.2.0",
+    "stripe": "^20.4.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
