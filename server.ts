@@ -3,8 +3,10 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB, client } from "./src/config/db";
 import { ObjectId } from "mongodb";
+import { error } from "console";
 dotenv.config();
 const app = express();
+const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
 
 app.use(cors({
   origin: "http://localhost:3000",
@@ -31,7 +33,7 @@ const startServer = async () => {
         .toArray();
 
       res.status(200).json({
-        success: true, 
+        success: true,
         total: parcels.length,
         data: parcels,
       });
@@ -45,34 +47,34 @@ const startServer = async () => {
   });
 
   // GET parcel by ID
-app.get("/parcels/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
+  app.get("/parcels/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
 
-    const parcel = await parcelCollection.findOne({
-      _id: new ObjectId(id),
-    });
+      const parcel = await parcelCollection.findOne({
+        _id: new ObjectId(id),
+      });
 
-    if (!parcel) {
-      return res.status(404).json({
+      if (!parcel) {
+        return res.status(404).json({
+          success: false,
+          message: "Parcel not found",
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: parcel,
+      });
+    } catch (error) {
+      console.error("Get parcel error:", error);
+
+      res.status(500).json({
         success: false,
-        message: "Parcel not found",
+        message: "Failed to fetch parcel",
       });
     }
-
-    res.status(200).json({
-      success: true,
-      data: parcel,
-    });
-  } catch (error) {
-    console.error("Get parcel error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch parcel",
-    });
-  }
-});
+  });
 
   // POST parcel
   app.post("/parcels", async (req, res) => {
@@ -82,32 +84,72 @@ app.get("/parcels/:id", async (req, res) => {
   });
 
   // DELETE parcel (Hard Delete)
-app.delete("/parcels/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
+  app.delete("/parcels/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
 
-    const result = await parcelCollection.deleteOne({
-      _id: new ObjectId(id),
-    });
+      const result = await parcelCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
 
-    if (result.deletedCount === 0) {
-      return res.status(404).json({
+      if (result.deletedCount === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Parcel not found",
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Parcel deleted successfully",
+      });
+    } catch (error) {
+      console.error("Delete error:", error);
+      res.status(500).json({
         success: false,
-        message: "Parcel not found",
+        message: "Failed to delete parcel",
       });
     }
+  });
 
-    res.status(200).json({
-      success: true,
-      message: "Parcel deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete parcel",
-    });
-  }
+  // payment intent
+  app.post("/create-payment-intent", async (req, res) => {
+    const amountInCents = req.body.amount
+    try {
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amountInCents,
+        currency: "usd",
+        payment_method_types: ["card"]
+
+      });
+      res.json({
+        success: true,
+        data: {
+          clientSecret: paymentIntent.client_secret
+        }
+      });
+
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  })
+  // after success the payment
+  app.patch("/parcels/:id/pay", async (req, res) => {
+  const id = req.params.id;
+  const { transactionId } = req.body;
+
+  await parcelCollection.updateOne(
+    { _id: new ObjectId(id) },
+    {
+      $set: {
+        paymentStatus: "paid",
+        transactionId,
+        paidAt: new Date(),
+      }
+    }
+  );
+
+  res.json({ success: true });
 });
   app.get("/", (req, res) => {
     res.send("ZipX Backend Running 🚀");
