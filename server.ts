@@ -114,43 +114,57 @@ const startServer = async () => {
 
   // payment intent
   app.post("/create-payment-intent", async (req, res) => {
-    const amountInCents = req.body.amount
+    const { parcelId } = req.body;
+
     try {
+      const parcel = await parcelCollection.findOne({
+        _id: new ObjectId(parcelId),
+      });
+
+      if (!parcel) {
+        return res.status(404).json({ message: "Parcel not found" });
+      }
+      if (parcel.paymentStatus === "paid") {
+        return res.status(400).json({
+          message: "Parcel already paid",
+        });
+      }
+      const amountInCents = parcel.totalPrice.total * 100;
+
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amountInCents,
         currency: "usd",
-        payment_method_types: ["card"]
-
+        payment_method_types: ["card"],
       });
+
       res.json({
         success: true,
         data: {
-          clientSecret: paymentIntent.client_secret
-        }
+          clientSecret: paymentIntent.client_secret,
+        },
       });
-
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
-  })
+  });
   // after success the payment
   app.patch("/parcels/:id/pay", async (req, res) => {
-  const id = req.params.id;
-  const { transactionId } = req.body;
+    const id = req.params.id;
+    const { transactionId } = req.body;
 
-  await parcelCollection.updateOne(
-    { _id: new ObjectId(id) },
-    {
-      $set: {
-        paymentStatus: "paid",
-        transactionId,
-        paidAt: new Date(),
+    await parcelCollection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          paymentStatus: "paid",
+          transactionId,
+          paidAt: new Date(),
+        }
       }
-    }
-  );
+    );
 
-  res.json({ success: true });
-});
+    res.json({ success: true });
+  });
   app.get("/", (req, res) => {
     res.send("ZipX Backend Running 🚀");
     console.log("this server running");
