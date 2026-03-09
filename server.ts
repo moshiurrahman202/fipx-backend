@@ -18,6 +18,7 @@ const startServer = async () => {
   await connectDB();
 
   const parcelCollection = client.db("parcelDb").collection("parcels");
+  const paymentCollection = client.db("parcelDb").collection("payments");
 
 
   // GET parcels all or by email
@@ -143,15 +144,25 @@ const startServer = async () => {
           clientSecret: paymentIntent.client_secret,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
-  // after success the payment
+
+  // after success the payment update payment status and save the history 
   app.patch("/parcels/:id/pay", async (req, res) => {
     const id = req.params.id;
     const { transactionId } = req.body;
 
+    const parcel = await parcelCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!parcel) {
+      return res.status(404).json({ success: false, message: "Parcel not found" });
+    }
+
+    // Update parcel payment status
     await parcelCollection.updateOne(
       { _id: new ObjectId(id) },
       {
@@ -159,12 +170,52 @@ const startServer = async () => {
           paymentStatus: "paid",
           transactionId,
           paidAt: new Date(),
-        }
+        },
       }
     );
 
+    // Save payment history
+    const paymentDoc = {
+      parcelId: parcel._id,
+      transactionId,
+      amount: parcel.totalPrice.total,
+      currency: "usd",
+      customerEmail: parcel.create_by,
+      customerName: parcel.senderName,
+      paymentMethod: "card",
+      status: "succeeded",
+      paidAt: new Date(),
+    };
+
+    await paymentCollection.insertOne(paymentDoc);
+
     res.json({ success: true });
   });
+
+  app.get("/payments", async (req, res) => {
+  try {
+    const email = req.query.email;
+    const filter = email ? { customerEmail: email } : {};
+
+    const payments = await paymentCollection
+      .find(filter)
+      .sort({ paidAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      total: payments.length,
+      data: payments,
+    });
+  } catch (error) {
+    console.error("Payments fetch error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch payments",
+    });
+  }
+});
+
   app.get("/", (req, res) => {
     res.send("ZipX Backend Running 🚀");
     console.log("this server running");
